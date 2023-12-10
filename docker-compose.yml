@@ -1,0 +1,89 @@
+version: '3.7'
+
+networks:
+  kong-net:
+    driver: bridge
+
+services:
+  kong-database:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: postgres:11.16
+    restart: always
+    networks:
+      - kong-net
+    environment:
+      - POSTGRES_USER=${KONG_DB_USERNAME}
+      - POSTGRES_PASSWORD=${KONG_DB_PASSWORD}
+      - POSTGRES_DB=${KONG_DB_NAME}
+  kong-migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile-kong-migrations
+    image: kong:latest
+    entrypoint: sh c- "sleep 10 && kong migrations bootstrap -v"
+    environment:
+      - KONG_DATABASE=${KONG_DATABASE}
+      - KONG_PG_HOST=${KONG_DB_HOST}
+      - KONG_PG_DATABASE=${KONG_DB_NAME}
+      - KONG_PG_USER=${KONG_DB_USERNAME}
+      - KONG_PG_PASSWORD=${KONG_DB_PASSWORD}
+    depends_on:
+      - kong-database
+    networks:
+      - kong-net
+    restart: on-failure
+  kong:
+    build:
+      context: .
+      dockerfile: Dockerfile-kong
+    image: kong:latest
+    environment:
+      - KONG_DATABASE=${KONG_DATABASE}
+      - KONG_PG_HOST=${KONG_DB_HOST}
+      - KONG_PG_DATABASE=${KONG_DB_NAME}
+      - KONG_PG_USER=${KONG_DB_USERNAME}
+      - KONG_PG_PASSWORD=${KONG_DB_PASSWORD}
+      - KONG_PROXY_ACCESS_LOG=${KONG_PROXY_ACCESS_LOG}
+      - KONG_ADMIN_ACCESS_LOG=${KONG_ADMIN_ACCESS_LOG}
+      - KONG_PROXY_ERROR_LOG=${KONG_PROXY_ERROR_LOG}
+      - KONG_ADMIN_ERROR_LOG=${KONG_ADMIN_ERROR_LOG}
+    restart: on-failure
+    ports:
+      - $KONG_PROXY_PORT:8000
+      - $KONG_PROXY_SSL_PORT:8443
+    depends_on:
+      - kong-database
+      - kong-migrations
+    networks:
+      - kong-net
+  kong-prepare:
+    image: pantsel/konga:next
+    command: "-c prepare -a postgres -u postgresql://kong:kong@kong-database:5432/konga"
+    networks:
+      - kong-net
+    restart: on-failure
+    links:
+      - kong-database
+    depends_on:
+      - kong-database
+  konga:
+    image: pantsel/konga:next
+    environment:
+      - TOKEN_SECRET=${KONGA_TOKEN_SECRET}
+      - DB_ADAPTER=${KONGA_DATABASE}
+      - DB_HOST=${KONGA_DB_HOST}
+      - DB_PORT=${KONGA_DB_PORT}
+      - DB_DATABASE=${KONGA_DB_NAME}
+      - DB_USER=${KONGA_DB_USERNAME}
+      - DB_PASSWORD=${KONGA_DB_PASSWORD}
+      - NODE_ENV=${KONGA_NODE_ENV}
+    restart: always
+    ports:
+      - ${KONGA_PORT}:${KONGA_PORT}
+    depends_on:
+      - kong-database
+      - konga-prepare
+    networks:
+      - kong-net
