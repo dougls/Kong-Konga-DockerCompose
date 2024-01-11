@@ -58,7 +58,7 @@ services:
       - kong-migrations
     networks:
       - kong-net
-  kong-prepare:
+  konga-prepare:
     image: pantsel/konga:next
     command: "-c prepare -a postgres -u postgresql://kong:kong@kong-database:5432/konga"
     networks:
@@ -72,13 +72,13 @@ services:
     image: pantsel/konga:next
     environment:
       - TOKEN_SECRET=${KONGA_TOKEN_SECRET}
-      - DB_ADAPTER=${KONGA_DATABASE}
-      - DB_HOST=${KONGA_DB_HOST}
-      - DB_PORT=${KONGA_DB_PORT}
+      - DB_ADAPTER=${KONG_DATABASE}
+      - DB_HOST=${KONG_DB_HOST}
+      - DB_PORT=${KONG_DB_PORT}
       - DB_DATABASE=${KONGA_DB_NAME}
-      - DB_USER=${KONGA_DB_USERNAME}
-      - DB_PASSWORD=${KONGA_DB_PASSWORD}
-      - NODE_ENV=${KONGA_NODE_ENV}
+      - DB_USER=${KONG_DB_USERNAME}
+      - DB_PASSWORD=${KONG_DB_PASSWORD}
+      - NODE_ENV=${KONGA_ENV}
     restart: always
     ports:
       - ${KONGA_PORT}:${KONGA_PORT}
