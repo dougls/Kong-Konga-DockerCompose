@@ -1,4 +1,4 @@
-version: '3.7'
+version: '3.8'
 
 networks:
   kong-net:
@@ -9,67 +9,76 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: postgres:11.16
     restart: always
-    networks:
-      - kong-net
     environment:
       - POSTGRES_USER=${KONG_DB_USERNAME}
       - POSTGRES_PASSWORD=${KONG_DB_PASSWORD}
       - POSTGRES_DB=${KONG_DB_NAME}
+    networks:
+      - kong-net
   kong-migrations:
-    build:
-      context: .
-      dockerfile: Dockerfile-kong-migrations
-    image: kong:latest
-    entrypoint: sh c- "sleep 10 && kong migrations bootstrap -v"
+    image: kong:3.4
+    entrypoint: "kong migrations bootstrap"
     environment:
       - KONG_DATABASE=${KONG_DATABASE}
       - KONG_PG_HOST=${KONG_DB_HOST}
       - KONG_PG_DATABASE=${KONG_DB_NAME}
       - KONG_PG_USER=${KONG_DB_USERNAME}
       - KONG_PG_PASSWORD=${KONG_DB_PASSWORD}
-    depends_on:
+    restart: on-failure
+    links:
       - kong-database
     networks:
       - kong-net
-    restart: on-failure
+    depends_on:
+      - kong-database
+    
   kong:
-    build:
-      context: .
-      dockerfile: Dockerfile-kong
-    image: kong:latest
+    image: kong:3.4
     environment:
       - KONG_DATABASE=${KONG_DATABASE}
       - KONG_PG_HOST=${KONG_DB_HOST}
       - KONG_PG_DATABASE=${KONG_DB_NAME}
       - KONG_PG_USER=${KONG_DB_USERNAME}
       - KONG_PG_PASSWORD=${KONG_DB_PASSWORD}
+      - KONG_LOG_LEVEL=${KONG_LOG_LEVEL}
       - KONG_PROXY_ACCESS_LOG=${KONG_PROXY_ACCESS_LOG}
       - KONG_ADMIN_ACCESS_LOG=${KONG_ADMIN_ACCESS_LOG}
       - KONG_PROXY_ERROR_LOG=${KONG_PROXY_ERROR_LOG}
       - KONG_ADMIN_ERROR_LOG=${KONG_ADMIN_ERROR_LOG}
-    restart: on-failure
+      - KONG_ADMIN_LISTEN=${KONG_ADMIN_LISTEN}
+      - KONG_ADMIN_GUI_URL=${KONG_ADMIN_GUI_URL}
+    restart: always
+    links:
+      - kong-database
     ports:
-      - $KONG_PROXY_PORT:8000
-      - $KONG_PROXY_SSL_PORT:8443
+      - ${KONG_PROXY_PORT}:${KONG_PROXY_PORT}
+      - ${KONG_PROXY_SSL_PORT}:${KONG_PROXY_SSL_PORT}
+      - ${KONG_PROXY_ADMIN_API_PORT}:${KONG_PROXY_ADMIN_API_PORT}
+      - ${KONG_PROXY_ADMIN_SSL_API_PORT}:${KONG_PROXY_ADMIN_SSL_API_PORT}
+      - ${KONG_MANAGER_PORT}:${KONG_MANAGER_PORT}
+      - ${KONG_MANAGER_SSL_PORT}:${KONG_MANAGER_SSL_PORT}
+      - ${KONG_3_PORT}:${KONG_3_PORT}
+      - ${KONG_4_PORT}:${KONG_4_PORT}
+    networks:
+      - kong-net
     depends_on:
       - kong-database
       - kong-migrations
-    networks:
-      - kong-net
   konga-prepare:
-    image: pantsel/konga:next
+    image: pantsel/konga:latest
     command: "-c prepare -a postgres -u postgresql://kong:kong@kong-database:5432/konga"
-    networks:
-      - kong-net
     restart: on-failure
     links:
       - kong-database
+    networks:
+      - kong-net
     depends_on:
       - kong-database
+      - kong-migrations
+      - kong
   konga:
-    image: pantsel/konga:next
+    image: pantsel/konga:latest
     environment:
       - TOKEN_SECRET=${KONGA_TOKEN_SECRET}
       - DB_ADAPTER=${KONG_DATABASE}
@@ -80,10 +89,14 @@ services:
       - DB_PASSWORD=${KONG_DB_PASSWORD}
       - NODE_ENV=${KONGA_ENV}
     restart: always
+    links:
+      - kong-database
     ports:
       - ${KONGA_PORT}:${KONGA_PORT}
-    depends_on:
-      - kong-database
-      - konga-prepare
     networks:
       - kong-net
+    depends_on:
+      - kong-database
+      - kong-migrations
+      - kong
+      - konga-prepare
